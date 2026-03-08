@@ -2,7 +2,6 @@ name: Terraform Deployment Template
 
 on:
   workflow_call:
-    # These are the inputs consuming repos pass in
     inputs:
       working_directory:
         description: "Path to the Terraform configuration"
@@ -14,22 +13,16 @@ on:
         type: string
         required: false
         default: "1.7.0"
+      var_file:
+        description: "Path to the tfvars file"
+        type: string
+        required: false
+        default: ""
       run_destroy:
         description: "Set to true to run destroy instead of apply"
         type: boolean
         required: false
         default: false
-
-    # These are secrets consuming repos pass in
-    secrets:
-      ARM_CLIENT_ID:
-        required: true
-      ARM_CLIENT_SECRET:
-        required: true
-      ARM_SUBSCRIPTION_ID:
-        required: true
-      ARM_TENANT_ID:
-        required: true
 
 jobs:
   # -------------------------------------------------------
@@ -92,10 +85,15 @@ jobs:
       # Save plan to file so Apply uses exact same plan
       - name: Terraform Plan
         run: |
+          VAR_FILE_ARG=""
+          if [ -n "${{ inputs.var_file }}" ]; then
+            VAR_FILE_ARG="-var-file=${{ inputs.var_file }}"
+          fi
           terraform plan \
             -out=tfplan \
             -input=false \
             -no-color \
+            $VAR_FILE_ARG \
           2>&1 | tee plan-output.txt
 
       # Show plan summary in the GitHub Actions UI
@@ -240,10 +238,15 @@ jobs:
       # Destroy all resources managed by this state
       - name: Terraform Destroy
         run: |
+          VAR_FILE_ARG=""
+          if [ -n "${{ inputs.var_file }}" ]; then
+            VAR_FILE_ARG="-var-file=${{ inputs.var_file }}"
+          fi
           terraform destroy \
             -auto-approve \
             -input=false \
             -no-color \
+            $VAR_FILE_ARG \
           2>&1 | tee destroy-output.txt
 
       - name: Show Destroy Summary
@@ -252,15 +255,3 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat destroy-output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-
-# ## Step 3 — Set up Approval Environments
-
-# This is what creates the **manual approval gate** before Apply and Destroy.
-
-# 1. Go to `github.com/buildcloudio/terraform-deployment-template`
-# 2. **Settings** → **Environments** → **New environment**
-# 3. Create three environments:
-# ```
-# plan      ← no approval needed, runs immediately
-# apply     ← add yourself as required reviewer
-# destroy   ← add yourself as required reviewer
