@@ -57,8 +57,7 @@ jobs:
 
       # Install Azure CLI on the runner
       - name: Setup Azure CLI
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+        uses: Azure/setup-cli@v1
 
       # Login to Azure — confirms credentials are working
       - name: Azure Login
@@ -149,8 +148,7 @@ jobs:
           terraform_version: ${{ inputs.terraform_version }}
 
       - name: Setup Azure CLI
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+        uses: Azure/setup-cli@v1
 
       - name: Azure Login
         run: |
@@ -221,8 +219,7 @@ jobs:
           terraform_version: ${{ inputs.terraform_version }}
 
       - name: Setup Azure CLI
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+        uses: Azure/setup-cli@v1
 
       - name: Azure Login
         run: |
