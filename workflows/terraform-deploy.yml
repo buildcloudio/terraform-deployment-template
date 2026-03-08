@@ -1,0 +1,266 @@
+name: Terraform Deployment Template
+
+on:
+  workflow_call:
+    # These are the inputs consuming repos pass in
+    inputs:
+      working_directory:
+        description: "Path to the Terraform configuration"
+        type: string
+        required: false
+        default: "."
+      terraform_version:
+        description: "Terraform version to use"
+        type: string
+        required: false
+        default: "1.7.0"
+      run_destroy:
+        description: "Set to true to run destroy instead of apply"
+        type: boolean
+        required: false
+        default: false
+
+    # These are secrets consuming repos pass in
+    secrets:
+      ARM_CLIENT_ID:
+        required: true
+      ARM_CLIENT_SECRET:
+        required: true
+      ARM_SUBSCRIPTION_ID:
+        required: true
+      ARM_TENANT_ID:
+        required: true
+
+jobs:
+  # -------------------------------------------------------
+  # PLAN STAGE
+  # Runs terraform init, validate and plan
+  # Saves plan output as artifact for Apply stage
+  # -------------------------------------------------------
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    environment: plan
+
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Install Terraform on the runner
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      # Install Azure CLI on the runner
+      - name: Setup Azure CLI
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+      # Login to Azure — confirms credentials are working
+      - name: Azure Login
+        run: |
+          az login --service-principal \
+            --username ${{ secrets.ARM_CLIENT_ID }} \
+            --password ${{ secrets.ARM_CLIENT_SECRET }} \
+            --tenant ${{ secrets.ARM_TENANT_ID }}
+          az account set --subscription ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      # Show caller identity — useful for audit/debugging
+      - name: Show Azure Identity
+        run: az account show -o table
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      # Save plan to file so Apply uses exact same plan
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -out=tfplan \
+            -input=false \
+            -no-color \
+          2>&1 | tee plan-output.txt
+
+      # Show plan summary in the GitHub Actions UI
+      - name: Show Plan Summary
+        run: |
+          echo "## Terraform Plan Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat plan-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      # Upload plan file as artifact — Apply will download this
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: |
+            ${{ inputs.working_directory }}/tfplan
+            ${{ inputs.working_directory }}/plan-output.txt
+          retention-days: 7
+
+  # -------------------------------------------------------
+  # APPLY STAGE
+  # Downloads plan artifact from Plan stage
+  # Requires manual approval before running
+  # Skipped if run_destroy is true
+  # -------------------------------------------------------
+  apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: plan
+    # Skip apply if destroy is requested
+    if: ${{ inputs.run_destroy == false }}
+    # This environment has manual approval gate configured in GitHub
+    environment: apply
+
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Setup Azure CLI
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+      - name: Azure Login
+        run: |
+          az login --service-principal \
+            --username ${{ secrets.ARM_CLIENT_ID }} \
+            --password ${{ secrets.ARM_CLIENT_SECRET }} \
+            --tenant ${{ secrets.ARM_TENANT_ID }}
+          az account set --subscription ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      # Download the exact plan saved by Plan stage
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ inputs.working_directory }}
+
+      # Apply using the saved plan — no surprises
+      - name: Terraform Apply
+        run: |
+          terraform apply \
+            -input=false \
+            -no-color \
+            tfplan \
+          2>&1 | tee apply-output.txt
+
+      # Show apply summary in GitHub Actions UI
+      - name: Show Apply Summary
+        run: |
+          echo "## Terraform Apply Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat apply-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # -------------------------------------------------------
+  # DESTROY STAGE
+  # Only runs when run_destroy input is true
+  # Also requires manual approval
+  # -------------------------------------------------------
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    needs: plan
+    # Only run destroy if explicitly requested
+    if: ${{ inputs.run_destroy == true }}
+    # Separate approval gate for destroy — extra safety
+    environment: destroy
+
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Setup Azure CLI
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+      - name: Azure Login
+        run: |
+          az login --service-principal \
+            --username ${{ secrets.ARM_CLIENT_ID }} \
+            --password ${{ secrets.ARM_CLIENT_SECRET }} \
+            --tenant ${{ secrets.ARM_TENANT_ID }}
+          az account set --subscription ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      # Destroy all resources managed by this state
+      - name: Terraform Destroy
+        run: |
+          terraform destroy \
+            -auto-approve \
+            -input=false \
+            -no-color \
+          2>&1 | tee destroy-output.txt
+
+      - name: Show Destroy Summary
+        run: |
+          echo "## Terraform Destroy Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat destroy-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+# ## Step 3 — Set up Approval Environments
+
+# This is what creates the **manual approval gate** before Apply and Destroy.
+
+# 1. Go to `github.com/buildcloudio/terraform-deployment-template`
+# 2. **Settings** → **Environments** → **New environment**
+# 3. Create three environments:
+# ```
+# plan      ← no approval needed, runs immediately
+# apply     ← add yourself as required reviewer
+# destroy   ← add yourself as required reviewer
