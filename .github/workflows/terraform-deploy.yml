@@ -71,16 +71,12 @@ jobs:
 
       # Install Azure CLI on the runner
       - name: Setup Azure CLI
-        uses: Azure/setup-cli@v1
-
-      # Login to Azure — confirms credentials are working
-      - name: Azure Login
-        run: |
-          az login --service-principal \
-            --username ${{ secrets.ARM_CLIENT_ID }} \
-            --password ${{ secrets.ARM_CLIENT_SECRET }} \
-            --tenant ${{ secrets.ARM_TENANT_ID }}
-          az account set --subscription ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.ARM_CLIENT_SECRET }}
 
       # Show caller identity — useful for audit/debugging
       - name: Show Azure Identity
@@ -162,7 +158,12 @@ jobs:
           terraform_version: ${{ inputs.terraform_version }}
 
       - name: Setup Azure CLI
-        uses: Azure/setup-cli@v1
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.ARM_CLIENT_SECRET }}
 
       - name: Azure Login
         run: |
@@ -233,7 +234,12 @@ jobs:
           terraform_version: ${{ inputs.terraform_version }}
 
       - name: Setup Azure CLI
-        uses: Azure/setup-cli@v1
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.ARM_CLIENT_SECRET }}
 
       - name: Azure Login
         run: |
