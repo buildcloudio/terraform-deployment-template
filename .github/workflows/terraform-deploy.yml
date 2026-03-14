@@ -133,7 +133,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: plan
     # Skip apply if destroy is requested
-    if: ${{ inputs.run_destroy == false }}
+    if: ${{ inputs.run_destroy != true }}
     # This environment has manual approval gate configured in GitHub
     environment: Terraform-Testing
 
@@ -202,7 +202,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: plan
     # Only run destroy if explicitly requested
-    if: ${{ inputs.run_destroy == true }}
+    if: ${{ inputs.run_destroy == true || inputs.run_destroy == 'true' }}
     # Separate approval gate for destroy — extra safety
     environment: Terraform-Testing
 
