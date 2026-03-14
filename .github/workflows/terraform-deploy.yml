@@ -47,7 +47,7 @@ jobs:
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
-    environment: plan
+    environment: Terraform-Testing
 
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
@@ -135,7 +135,7 @@ jobs:
     # Skip apply if destroy is requested
     if: ${{ inputs.run_destroy == false }}
     # This environment has manual approval gate configured in GitHub
-    environment: apply
+    environment: Terraform-Testing
 
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
@@ -204,7 +204,7 @@ jobs:
     # Only run destroy if explicitly requested
     if: ${{ inputs.run_destroy == true }}
     # Separate approval gate for destroy — extra safety
-    environment: destroy
+    environment: Terraform-Testing
 
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
